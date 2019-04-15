@@ -42,10 +42,10 @@ func cipherSuiteForID(id cipherSuiteID) cipherSuite {
 // Preferred at the bottom
 func clientCipherSuites() []cipherSuite {
 	return []cipherSuite{
-		&cipherSuiteTLSEcdheRsaWithAes256CbcSha{},
-		&cipherSuiteTLSEcdheEcdsaWithAes256CbcSha{},
-		&cipherSuiteTLSEcdheRsaWithAes128GcmSha256{},
-		&cipherSuiteTLSEcdheEcdsaWithAes128GcmSha256{},
+		// &cipherSuiteTLSEcdheRsaWithAes256CbcSha{},
+		// &cipherSuiteTLSEcdheEcdsaWithAes256CbcSha{},
+		// &cipherSuiteTLSEcdheRsaWithAes128GcmSha256{},
+		&cipherSuiteTLSNullWithNullNull{},
 	}
 }
 
