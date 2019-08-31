@@ -14,7 +14,7 @@ func main() {
 	addr := &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 4444}
 
 	// Generate a certificate and private key to secure the connection
-	certificate, privateKey, genErr := dtls.GenerateSelfSigned()
+	certificate, privateKey, genErr := dtls.GenerateSelfSignedByTypeAndCurve("ecdsa", "p256")
 	util.Check(genErr)
 
 	//

@@ -2,9 +2,8 @@ package dtls
 
 import (
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
@@ -38,7 +37,33 @@ func putBigEndianUint48(out []byte, in uint64) {
 
 // GenerateSelfSigned creates a self-signed certificate
 func GenerateSelfSigned() (*x509.Certificate, crypto.PrivateKey, error) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	return GenerateSelfSignedByTypeAndCurve(
+		"ecdsa", "p256",
+	)
+}
+
+// GenerateSelfSignedByTypeAndCurve creates a self-signed certificate
+// for the specified certificateType and namedCurve.
+//
+// When the certificate type is RSA the named curve is ignored
+func GenerateSelfSignedByTypeAndCurve(certificateType string, namedCurve string) (*x509.Certificate, crypto.PrivateKey, error) {
+	ct, err := clientCertificateTypeFromString(certificateType)
+	if err != nil {
+		return nil, nil, err
+	}
+	nc, err := namedCurveFromString(namedCurve)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var priv crypto.Signer
+	switch ct {
+	case clientCertificateTypeRSASign:
+		priv, err = generateKeypair(nc)
+	case clientCertificateTypeECDSASign:
+		priv, err = rsa.GenerateKey(rand.Reader, 2048)
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}
@@ -69,7 +94,8 @@ func GenerateSelfSigned() (*x509.Certificate, crypto.PrivateKey, error) {
 		IsCA:                  true,
 	}
 
-	raw, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	pk := priv.Public()
+	raw, err := x509.CreateCertificate(rand.Reader, &template, &template, &pk, priv)
 	if err != nil {
 		return nil, nil, err
 	}
