@@ -4,7 +4,9 @@ import (
 	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
+	"fmt"
 	"io"
+	"strings"
 
 	"golang.org/x/crypto/curve25519"
 )
@@ -43,6 +45,21 @@ var namedCurves = map[namedCurve]bool{
 	namedCurveX25519: true,
 	namedCurveP256:   true,
 	namedCurveP384:   true,
+}
+
+func namedCurveFromString(n string) (namedCurve, error) {
+	n = strings.ToLower(n)
+
+	switch n {
+	case "p256", "p-256", "secp256", "secp256r1":
+		return namedCurveP256, nil
+	case "p384", "p-384", "secp384", "secp384r1":
+		return namedCurveP384, nil
+	case "25519", "x25519", "curve25519":
+		return namedCurveX25519, nil
+	default:
+		return 0, fmt.Errorf("unknown named curve: %s", n)
+	}
 }
 
 func generateKeypair(c namedCurve) (*namedCurveKeypair, error) {
