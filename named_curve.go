@@ -1,8 +1,10 @@
 package dtls
 
 import (
+	"crypto"
 	"crypto/elliptic"
 	"crypto/rand"
+	"io"
 
 	"golang.org/x/crypto/curve25519"
 )
@@ -14,6 +16,21 @@ type namedCurveKeypair struct {
 	curve      namedCurve
 	publicKey  []byte
 	privateKey []byte
+}
+
+// Public satisfies part of crypto.Signer and crypto.Decrypter interfaces
+func (n *namedCurveKeypair) Public() crypto.PublicKey {
+	return n.publicKey
+}
+
+// Sign satisfies part of the crypto.Signer interface
+func (n *namedCurveKeypair) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+	return n.Sign(rand, digest, opts)
+}
+
+// Decrypt satisfies part of the crypto.Decrypter interface
+func (n *namedCurveKeypair) Decrypt(rand io.Reader, ciphertext []byte, opts crypto.DecrypterOpts) (plaintext []byte, err error) {
+	return n.Decrypt(rand, ciphertext, opts)
 }
 
 const (
