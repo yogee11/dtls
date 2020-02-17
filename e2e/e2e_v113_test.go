@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"fmt"
 	"testing"
 	"time"
 
@@ -28,32 +29,37 @@ func TestPionE2ESimpleED25519(t *testing.T) {
 
 	serverPort := randomPort(t)
 
-	for _, cipherSuite := range []dtls.CipherSuiteID{
-		dtls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM,
-		dtls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
-		dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-		dtls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-	} {
-		cipherSuite := cipherSuite
-		t.Run(cipherSuite.String(), func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
+	// TODO(igolaizola): make this work with openssl
+	for _, mode := range []string{"default" /*, "openssl_client", "openssl_server"*/} {
+		for _, cipherSuite := range []dtls.CipherSuiteID{
+			dtls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM,
+			dtls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
+			dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			dtls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+		} {
+			mode := mode
+			cipherSuite := cipherSuite
+			t.Run(fmt.Sprintf("%s_%s", cipherSuite, mode), func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
 
-			_, key, err := ed25519.GenerateKey(rand.Reader)
-			if err != nil {
-				t.Fatal(err)
-			}
-			cert, err := selfsign.SelfSign(key)
-			if err != nil {
-				t.Fatal(err)
-			}
+				_, key, err := ed25519.GenerateKey(rand.Reader)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cert, err := selfsign.SelfSign(key)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-			cfg := &dtls.Config{
-				Certificates:       []tls.Certificate{cert},
-				CipherSuites:       []dtls.CipherSuiteID{cipherSuite},
-				InsecureSkipVerify: true,
-			}
-			assertE2ECommunication(ctx, cfg, cfg, serverPort, t)
-		})
+				cfg := &dtls.Config{
+					Certificates:       []tls.Certificate{cert},
+					CipherSuites:       []dtls.CipherSuiteID{cipherSuite},
+					InsecureSkipVerify: true,
+				}
+				comm := newComm(ctx, cfg, cfg, serverPort, mode)
+				comm.assert(t)
+			})
+		}
 	}
 }

@@ -43,6 +43,11 @@ test_job: &test_job
   env: CACHE_NAME=test
   before_install:
     - go mod download
+  addons:
+    apt:
+      update: true
+      packages:
+        - openssl
   install:
     - go build ./...
   script:
