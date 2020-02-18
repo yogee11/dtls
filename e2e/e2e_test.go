@@ -80,11 +80,11 @@ type comm struct {
 	errChan                    chan error
 	clientChan                 chan string
 	serverChan                 chan string
-	useClientOpenSSL           bool
-	useServerOpenSSL           bool
+	client                     func(*comm)
+	server                     func(*comm)
 }
 
-func newComm(ctx context.Context, clientConfig, serverConfig *dtls.Config, serverPort int, mode string) *comm {
+func newComm(ctx context.Context, clientConfig, serverConfig *dtls.Config, serverPort int, server, client func(*comm)) *comm {
 	messageRecvCount := uint64(0)
 	c := &comm{
 		ctx:              ctx,
@@ -98,30 +98,19 @@ func newComm(ctx context.Context, clientConfig, serverConfig *dtls.Config, serve
 		errChan:          make(chan error),
 		clientChan:       make(chan string),
 		serverChan:       make(chan string),
-	}
-	switch mode {
-	case "openssl_client":
-		c.useClientOpenSSL = true
-	case "openssl_server":
-		c.useServerOpenSSL = true
+		server:           server,
+		client:           client,
 	}
 	return c
 }
 
 func (c *comm) assert(t *testing.T) {
 	// DTLS Client
-	if c.useClientOpenSSL {
-		go c.clientOpenSSL()
-	} else {
-		go c.client()
-	}
+	go c.client(c)
 
 	// DTLS Server
-	if c.useServerOpenSSL {
-		go c.serverOpenSSL()
-	} else {
-		go c.server()
-	}
+	go c.server(c)
+
 	defer func() {
 		c.clientMutex.Lock()
 		c.serverMutex.Lock()
@@ -174,7 +163,7 @@ func (c *comm) assert(t *testing.T) {
 	}()
 }
 
-func (c *comm) client() {
+func clientPion(c *comm) {
 	select {
 	case <-c.serverReady:
 		// OK
@@ -198,7 +187,7 @@ func (c *comm) client() {
 	simpleReadWrite(c.errChan, c.clientChan, c.clientConn, c.messageRecvCount)
 }
 
-func (c *comm) server() {
+func serverPion(c *comm) {
 	c.serverMutex.Lock()
 	defer c.serverMutex.Unlock()
 
@@ -227,114 +216,114 @@ func (c *comm) server() {
 	- Assert that Close() on both ends work
 	- Assert that no Goroutines are leaked
 */
+func testPionE2ESimple(t *testing.T, server, client func(*comm)) {
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	serverPort := randomPort(t)
+
+	for _, cipherSuite := range []dtls.CipherSuiteID{
+		dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		dtls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+	} {
+		cipherSuite := cipherSuite
+		t.Run(cipherSuite.String(), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			cert, err := selfsign.GenerateSelfSigned()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg := &dtls.Config{
+				Certificates:       []tls.Certificate{cert},
+				CipherSuites:       []dtls.CipherSuiteID{cipherSuite},
+				InsecureSkipVerify: true,
+			}
+			comm := newComm(ctx, cfg, cfg, serverPort, server, client)
+			comm.assert(t)
+		})
+	}
+}
+
+func testPionE2ESimplePSK(t *testing.T, server, client func(*comm)) {
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	serverPort := randomPort(t)
+
+	for _, cipherSuite := range []dtls.CipherSuiteID{
+		dtls.TLS_PSK_WITH_AES_128_CCM,
+		dtls.TLS_PSK_WITH_AES_128_CCM_8,
+		dtls.TLS_PSK_WITH_AES_128_GCM_SHA256,
+	} {
+		cipherSuite := cipherSuite
+		t.Run(cipherSuite.String(), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			cfg := &dtls.Config{
+				PSK: func(hint []byte) ([]byte, error) {
+					return []byte{0xAB, 0xC1, 0x23}, nil
+				},
+				PSKIdentityHint: []byte{0x01, 0x02, 0x03, 0x04, 0x05},
+				CipherSuites:    []dtls.CipherSuiteID{cipherSuite},
+			}
+			comm := newComm(ctx, cfg, cfg, serverPort, server, client)
+			comm.assert(t)
+		})
+	}
+}
+
+func testPionE2EMTUs(t *testing.T, server, client func(*comm)) {
+	lim := test.TimeOut(time.Second * 30)
+	defer lim.Stop()
+
+	report := test.CheckRoutines(t)
+	defer report()
+
+	serverPort := randomPort(t)
+
+	for _, mtu := range []int{
+		10000,
+		1000,
+		100,
+	} {
+		mtu := mtu
+		t.Run(fmt.Sprintf("MTU%d", mtu), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			cert, err := selfsign.GenerateSelfSigned()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cfg := &dtls.Config{
+				Certificates:       []tls.Certificate{cert},
+				CipherSuites:       []dtls.CipherSuiteID{dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
+				InsecureSkipVerify: true,
+				MTU:                mtu,
+			}
+			comm := newComm(ctx, cfg, cfg, serverPort, server, client)
+			comm.assert(t)
+		})
+	}
+}
+
 func TestPionE2ESimple(t *testing.T) {
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
-	report := test.CheckRoutines(t)
-	defer report()
-
-	serverPort := randomPort(t)
-
-	for _, mode := range []string{"default", "openssl_client", "openssl_server"} {
-		for _, cipherSuite := range []dtls.CipherSuiteID{
-			dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
-			dtls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
-		} {
-			mode := mode
-			cipherSuite := cipherSuite
-			t.Run(fmt.Sprintf("%s_%s", cipherSuite, mode), func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer cancel()
-
-				cert, err := selfsign.GenerateSelfSigned()
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				cfg := &dtls.Config{
-					Certificates:       []tls.Certificate{cert},
-					CipherSuites:       []dtls.CipherSuiteID{cipherSuite},
-					InsecureSkipVerify: true,
-				}
-				comm := newComm(ctx, cfg, cfg, serverPort, mode)
-				comm.assert(t)
-			})
-		}
-	}
+	testPionE2ESimple(t, serverPion, clientPion)
 }
-
 func TestPionE2ESimplePSK(t *testing.T) {
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
-	report := test.CheckRoutines(t)
-	defer report()
-
-	serverPort := randomPort(t)
-
-	// TODO(igolaizola): make PSK work with openssl server
-	for _, mode := range []string{"default", "openssl_client" /*, "openssl_server"*/} {
-		for _, cipherSuite := range []dtls.CipherSuiteID{
-			dtls.TLS_PSK_WITH_AES_128_CCM,
-			dtls.TLS_PSK_WITH_AES_128_CCM_8,
-			dtls.TLS_PSK_WITH_AES_128_GCM_SHA256,
-		} {
-			mode := mode
-			cipherSuite := cipherSuite
-			t.Run(fmt.Sprintf("%s_%s", cipherSuite, mode), func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-				defer cancel()
-
-				cfg := &dtls.Config{
-					PSK: func(hint []byte) ([]byte, error) {
-						return []byte{0xAB, 0xC1, 0x23}, nil
-					},
-					PSKIdentityHint: []byte{0x01, 0x02, 0x03, 0x04, 0x05},
-					CipherSuites:    []dtls.CipherSuiteID{cipherSuite},
-				}
-				comm := newComm(ctx, cfg, cfg, serverPort, mode)
-				comm.assert(t)
-			})
-		}
-	}
+	testPionE2ESimplePSK(t, serverPion, clientPion)
 }
-
 func TestPionE2EMTUs(t *testing.T) {
-	lim := test.TimeOut(time.Second * 30)
-	defer lim.Stop()
-
-	report := test.CheckRoutines(t)
-	defer report()
-
-	serverPort := randomPort(t)
-
-	for _, mode := range []string{"default", "openssl_client", "openssl_server"} {
-		for _, mtu := range []int{
-			10000,
-			1000,
-			100,
-		} {
-			mode := mode
-			mtu := mtu
-			t.Run(fmt.Sprintf("MTU%d_%s", mtu, mode), func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-
-				cert, err := selfsign.GenerateSelfSigned()
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				cfg := &dtls.Config{
-					Certificates:       []tls.Certificate{cert},
-					CipherSuites:       []dtls.CipherSuiteID{dtls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
-					InsecureSkipVerify: true,
-					MTU:                mtu,
-				}
-				comm := newComm(ctx, cfg, cfg, serverPort, mode)
-				comm.assert(t)
-			})
-		}
-	}
+	testPionE2EMTUs(t, serverPion, clientPion)
 }

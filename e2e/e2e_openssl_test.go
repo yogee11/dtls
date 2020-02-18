@@ -1,3 +1,5 @@
+// +build openssl,!js
+
 package e2e
 
 import (
@@ -10,12 +12,13 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/pion/dtls/v2"
 )
 
-func (c *comm) serverOpenSSL() {
+func serverOpenSSL(c *comm) {
 	go func() {
 		c.serverMutex.Lock()
 		defer c.serverMutex.Unlock()
@@ -79,18 +82,21 @@ func (c *comm) serverOpenSSL() {
 			return
 		}
 
+		time.Sleep(time.Second)
+
 		c.serverReady <- struct{}{}
 		simpleReadWrite(c.errChan, c.serverChan, c.serverConn, c.messageRecvCount)
 	}()
 }
 
-func (c *comm) clientOpenSSL() {
+func clientOpenSSL(c *comm) {
 	select {
 	case <-c.serverReady:
 		// OK
 	case <-time.After(time.Second):
 		c.errChan <- errors.New("waiting on serverReady err: timeout")
 	}
+	time.Sleep(time.Second)
 
 	c.clientMutex.Lock()
 	defer c.clientMutex.Unlock()
@@ -101,7 +107,7 @@ func (c *comm) clientOpenSSL() {
 	args := []string{"s_client",
 		"-dtls1_2",
 		"-quiet",
-		fmt.Sprintf("-connect=localhost:%d", c.serverPort),
+		fmt.Sprintf("-connect=127.0.0.1:%d", c.serverPort),
 	}
 	ciphers := ciphersOpenSSL(cfg)
 	if ciphers != "" {
@@ -208,4 +214,32 @@ func writeTempPEM(cfg *dtls.Config) (string, string, error) {
 		return "", "", fmt.Errorf("error closing key.pem: %w", err)
 	}
 	return certOut.Name(), keyOut.Name(), nil
+}
+
+func TestPionOpenSSLE2ESimple(t *testing.T) {
+	t.Run("OpenSSLServer", func(t *testing.T) {
+		testPionE2ESimple(t, serverOpenSSL, clientPion)
+	})
+	t.Run("OpenSSLClient", func(t *testing.T) {
+		testPionE2ESimple(t, serverPion, clientOpenSSL)
+	})
+}
+func TestPionOpenSSLE2ESimplePSK(t *testing.T) {
+	// TODO(igolaizola): make PSK work with openssl server
+	/*
+		t.Run("OpenSSLServer", func(t *testing.T) {
+			testPionE2ESimplePSK(t, serverOpenSSL, clientPion)
+		})
+	*/
+	t.Run("OpenSSLClient", func(t *testing.T) {
+		testPionE2ESimplePSK(t, serverPion, clientOpenSSL)
+	})
+}
+func TestPionOpenSSLE2EMTUs(t *testing.T) {
+	t.Run("OpenSSLServer", func(t *testing.T) {
+		testPionE2EMTUs(t, serverOpenSSL, clientPion)
+	})
+	t.Run("OpenSSLClient", func(t *testing.T) {
+		testPionE2EMTUs(t, serverPion, clientOpenSSL)
+	})
 }
