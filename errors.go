@@ -39,6 +39,7 @@ var (
 	errInvalidNamedCurve                 = errors.New("dtls: invalid named curve")
 	errInvalidPrivateKey                 = errors.New("dtls: invalid private key type")
 	errInvalidSignatureAlgorithm         = errors.New("dtls: invalid signature algorithm")
+	errInvalidFlight                     = errors.New("dtls: invalid flight number")
 	errKeySignatureGenerateUnimplemented = errors.New("dtls: Unable to generate key signature, unimplemented")
 	errKeySignatureMismatch              = errors.New("dtls: Expected and actual key signature do not match")
 	errKeySignatureVerifyUnimplemented   = errors.New("dtls: Unable to verify key signature, unimplemented")

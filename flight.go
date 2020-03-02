@@ -67,19 +67,9 @@ func (f flightVal) String() string {
 }
 
 func (f flightVal) isLastSendFlight() bool {
-	switch f {
-	case flight6:
-		return true
-	default:
-		return false
-	}
+	return f == flight6
 }
 
 func (f flightVal) isLastRecvFlight() bool {
-	switch f {
-	case flight5:
-		return true
-	default:
-		return false
-	}
+	return f == flight5
 }

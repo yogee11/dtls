@@ -172,10 +172,20 @@ func (s *handshakeFSM) Done() <-chan struct{} {
 func (s *handshakeFSM) prepare(ctx context.Context, c flightConn) (handshakeState, error) {
 	s.flights = nil
 	// Prepare flights
-	gen := s.currentFlight.getFlightGenerator()
-	pkts, alert, err := gen(c, s.state, s.cache, s.cfg)
-	if alert != nil {
-		if alertErr := c.notify(ctx, alert.alertLevel, alert.alertDescription); alertErr != nil {
+	var (
+		a    *alert
+		err  error
+		pkts []*packet
+	)
+	gen, errFlight := s.currentFlight.getFlightGenerator()
+	if errFlight != nil {
+		err = errFlight
+		a = &alert{alertLevelFatal, alertInternalError}
+	} else {
+		pkts, a, err = gen(c, s.state, s.cache, s.cfg)
+	}
+	if a != nil {
+		if alertErr := c.notify(ctx, a.alertLevel, a.alertDescription); alertErr != nil {
 			if err != nil {
 				err = alertErr
 			}
@@ -218,7 +228,15 @@ func (s *handshakeFSM) send(ctx context.Context, c flightConn) (handshakeState, 
 }
 
 func (s *handshakeFSM) wait(ctx context.Context, c flightConn) (handshakeState, error) {
-	parse := s.currentFlight.getFlightParser()
+	parse, errFlight := s.currentFlight.getFlightParser()
+	if errFlight != nil {
+		if alertErr := c.notify(ctx, alertLevelFatal, alertInternalError); alertErr != nil {
+			if errFlight != nil {
+				return handshakeErrored, alertErr
+			}
+		}
+		return handshakeErrored, errFlight
+	}
 
 	retransmitTimer := time.NewTimer(s.cfg.retransmitInterval)
 	for {
@@ -255,7 +273,15 @@ func (s *handshakeFSM) wait(ctx context.Context, c flightConn) (handshakeState, 
 }
 
 func (s *handshakeFSM) finish(ctx context.Context, c flightConn) (handshakeState, error) {
-	parse := s.currentFlight.getFlightParser()
+	parse, errFlight := s.currentFlight.getFlightParser()
+	if errFlight != nil {
+		if alertErr := c.notify(ctx, alertLevelFatal, alertInternalError); alertErr != nil {
+			if errFlight != nil {
+				return handshakeErrored, alertErr
+			}
+		}
+		return handshakeErrored, errFlight
+	}
 
 	select {
 	case done := <-c.recvHandshake():
