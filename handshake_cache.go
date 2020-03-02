@@ -1,6 +1,8 @@
 package dtls
 
-import "sync"
+import (
+	"sync"
+)
 
 type handshakeCacheItem struct {
 	typ             handshakeType
@@ -12,6 +14,7 @@ type handshakeCacheItem struct {
 type handshakeCachePullRule struct {
 	typ      handshakeType
 	isClient bool
+	optional bool
 }
 
 type handshakeCache struct {
@@ -67,6 +70,52 @@ func (h *handshakeCache) pull(rules ...handshakeCachePullRule) []*handshakeCache
 	return out
 }
 
+// fullPullMap pulls all handshakes between rules[0] to rules[len(rules)-1] as map.
+func (h *handshakeCache) fullPullMap(startSeq int, rules ...handshakeCachePullRule) (int, map[handshakeType]handshakeMessage, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	ci := make(map[handshakeType]*handshakeCacheItem)
+	for _, r := range rules {
+		var item *handshakeCacheItem
+		for _, c := range h.cache {
+			if c.typ == r.typ && c.isClient == r.isClient {
+				switch {
+				case item == nil:
+					item = c
+				case item.messageSequence < c.messageSequence:
+					item = c
+				}
+			}
+		}
+		if !r.optional && item == nil {
+			// Missing mandatory message.
+			return startSeq, nil, false
+		}
+		ci[r.typ] = item
+	}
+	out := make(map[handshakeType]handshakeMessage)
+	seq := startSeq
+	for _, r := range rules {
+		t := r.typ
+		i := ci[t]
+		if i == nil {
+			continue
+		}
+		rawHandshake := &handshake{}
+		if err := rawHandshake.Unmarshal(i.data); err != nil {
+			return startSeq, nil, false
+		}
+		if uint16(seq) != rawHandshake.handshakeHeader.messageSequence {
+			// There is a gap. Some messages are not arrived.
+			return startSeq, nil, false
+		}
+		seq++
+		out[t] = rawHandshake.handshakeMessage
+	}
+	return seq, out, true
+}
+
 // pullAndMerge calls pull and then merges the results, ignoring any null entries
 func (h *handshakeCache) pullAndMerge(rules ...handshakeCachePullRule) []byte {
 	merged := []byte{}
@@ -81,19 +130,19 @@ func (h *handshakeCache) pullAndMerge(rules ...handshakeCachePullRule) []byte {
 
 // sessionHash returns the session hash for Extended Master Secret support
 // https://tools.ietf.org/html/draft-ietf-tls-session-hash-06#section-4
-func (h *handshakeCache) sessionHash(hf hashFunc) ([]byte, error) {
+func (h *handshakeCache) sessionHash(hf hashFunc, additional ...[]byte) ([]byte, error) {
 	merged := []byte{}
 
 	// Order defined by https://tools.ietf.org/html/rfc5246#section-7.3
 	handshakeBuffer := h.pull(
-		handshakeCachePullRule{handshakeTypeClientHello, true},
-		handshakeCachePullRule{handshakeTypeServerHello, false},
-		handshakeCachePullRule{handshakeTypeCertificate, false},
-		handshakeCachePullRule{handshakeTypeServerKeyExchange, false},
-		handshakeCachePullRule{handshakeTypeCertificateRequest, false},
-		handshakeCachePullRule{handshakeTypeServerHelloDone, false},
-		handshakeCachePullRule{handshakeTypeCertificate, true},
-		handshakeCachePullRule{handshakeTypeClientKeyExchange, true},
+		handshakeCachePullRule{handshakeTypeClientHello, true, false},
+		handshakeCachePullRule{handshakeTypeServerHello, false, false},
+		handshakeCachePullRule{handshakeTypeCertificate, false, false},
+		handshakeCachePullRule{handshakeTypeServerKeyExchange, false, false},
+		handshakeCachePullRule{handshakeTypeCertificateRequest, false, false},
+		handshakeCachePullRule{handshakeTypeServerHelloDone, false, false},
+		handshakeCachePullRule{handshakeTypeCertificate, true, false},
+		handshakeCachePullRule{handshakeTypeClientKeyExchange, true, false},
 	)
 
 	for _, p := range handshakeBuffer {
@@ -102,6 +151,9 @@ func (h *handshakeCache) sessionHash(hf hashFunc) ([]byte, error) {
 		}
 
 		merged = append(merged, p.data...)
+	}
+	for _, a := range additional {
+		merged = append(merged, a...)
 	}
 
 	hash := hf()
