@@ -11,17 +11,17 @@ func flight3Parse(ctx context.Context, c flightConn, state *State, cache *handsh
 
 	if cfg.localPSKCallback != nil {
 		seq, msgs, ok = cache.fullPullMap(state.handshakeRecvSequence,
-			handshakeCachePullRule{handshakeTypeServerHello, false, false},
-			handshakeCachePullRule{handshakeTypeServerKeyExchange, false, true},
-			handshakeCachePullRule{handshakeTypeServerHelloDone, false, false},
+			handshakeCachePullRule{handshakeTypeServerHello, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerKeyExchange, cfg.initialEpoch, false, true},
+			handshakeCachePullRule{handshakeTypeServerHelloDone, cfg.initialEpoch, false, false},
 		)
 	} else {
 		seq, msgs, ok = cache.fullPullMap(state.handshakeRecvSequence,
-			handshakeCachePullRule{handshakeTypeServerHello, false, false},
-			handshakeCachePullRule{handshakeTypeCertificate, false, false},
-			handshakeCachePullRule{handshakeTypeServerKeyExchange, false, false},
-			handshakeCachePullRule{handshakeTypeCertificateRequest, false, true},
-			handshakeCachePullRule{handshakeTypeServerHelloDone, false, false},
+			handshakeCachePullRule{handshakeTypeServerHello, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerKeyExchange, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificateRequest, cfg.initialEpoch, false, true},
+			handshakeCachePullRule{handshakeTypeServerHelloDone, cfg.initialEpoch, false, false},
 		)
 	}
 	state.handshakeRecvSequence = seq

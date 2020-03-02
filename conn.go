@@ -387,7 +387,7 @@ func (c *Conn) writePackets(ctx context.Context, pkts []*packet) error {
 			c.log.Tracef("[handshake:%v] -> %s (epoch: %d, seq: %d)",
 				srvCliStr(c.state.isClient), h.handshakeHeader.handshakeType.String(),
 				p.record.recordLayerHeader.epoch, h.handshakeHeader.messageSequence)
-			c.handshakeCache.push(handshakeRaw[recordLayerHeaderSize:], h.handshakeHeader.messageSequence, h.handshakeHeader.handshakeType, c.state.isClient)
+			c.handshakeCache.push(handshakeRaw[recordLayerHeaderSize:], p.record.recordLayerHeader.epoch, h.handshakeHeader.messageSequence, h.handshakeHeader.handshakeType, c.state.isClient)
 
 			rawHandshakePackets, err := c.processHandshakePacket(p, h)
 			if err != nil {
@@ -656,14 +656,14 @@ func (c *Conn) handleIncomingPacket(buf []byte) (bool, *alert, error) {
 		c.log.Debugf("defragment failed: %s", err)
 		return false, nil, nil
 	} else if isHandshake {
-		for out := c.fragmentBuffer.pop(); out != nil; out = c.fragmentBuffer.pop() {
+		for out, epoch := c.fragmentBuffer.pop(); out != nil; out, epoch = c.fragmentBuffer.pop() {
 			rawHandshake := &handshake{}
 			if err := rawHandshake.Unmarshal(out); err != nil {
 				c.log.Debugf("%s: handshake parse failed: %s", srvCliStr(c.state.isClient), err)
 				continue
 			}
 
-			_ = c.handshakeCache.push(out, rawHandshake.handshakeHeader.messageSequence, rawHandshake.handshakeHeader.handshakeType, !c.state.isClient)
+			_ = c.handshakeCache.push(out, epoch, rawHandshake.handshakeHeader.messageSequence, rawHandshake.handshakeHeader.handshakeType, !c.state.isClient)
 		}
 
 		return true, nil, nil
@@ -684,10 +684,16 @@ func (c *Conn) handleIncomingPacket(buf []byte) (bool, *alert, error) {
 		}
 		return false, a, &errAlert{content}
 	case *changeCipherSpec:
+		if c.state.cipherSuite == nil || !c.state.cipherSuite.isInitialized() {
+			c.encryptedPackets = append(c.encryptedPackets, buf)
+			c.log.Debug("handleIncoming: CipherSuite not initialized, queuing packet")
+			return false, nil, nil
+		}
+
 		newRemoteEpoch := h.epoch + 1
 		c.log.Tracef("%s: <- ChangeCipherSpec (epoch: %d)", srvCliStr(c.state.isClient), newRemoteEpoch)
 
-		if c.getRemoteEpoch() < newRemoteEpoch {
+		if c.getRemoteEpoch()+1 == newRemoteEpoch {
 			c.setRemoteEpoch(newRemoteEpoch)
 		}
 	case *applicationData:

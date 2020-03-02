@@ -7,7 +7,7 @@ import (
 
 func flight2Parse(ctx context.Context, c flightConn, state *State, cache *handshakeCache, cfg *handshakeConfig) (flightVal, *alert, error) {
 	seq, msgs, ok := cache.fullPullMap(state.handshakeRecvSequence,
-		handshakeCachePullRule{handshakeTypeClientHello, true, true},
+		handshakeCachePullRule{handshakeTypeClientHello, cfg.initialEpoch, true, true},
 	)
 	state.handshakeRecvSequence = seq
 	if !ok {

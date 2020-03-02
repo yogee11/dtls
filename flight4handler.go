@@ -7,9 +7,9 @@ import (
 
 func flight4Parse(ctx context.Context, c flightConn, state *State, cache *handshakeCache, cfg *handshakeConfig) (flightVal, *alert, error) {
 	seq, msgs, ok := cache.fullPullMap(state.handshakeRecvSequence,
-		handshakeCachePullRule{handshakeTypeCertificate, true, true},
-		handshakeCachePullRule{handshakeTypeClientKeyExchange, true, false},
-		handshakeCachePullRule{handshakeTypeCertificateVerify, true, true},
+		handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, true, true},
+		handshakeCachePullRule{handshakeTypeClientKeyExchange, cfg.initialEpoch, true, false},
+		handshakeCachePullRule{handshakeTypeCertificateVerify, cfg.initialEpoch, true, true},
 	)
 	if !ok {
 		// No valid message received. Keep reading
@@ -32,14 +32,14 @@ func flight4Parse(ctx context.Context, c flightConn, state *State, cache *handsh
 		}
 
 		plainText := cache.pullAndMerge(
-			handshakeCachePullRule{handshakeTypeClientHello, true, false},
-			handshakeCachePullRule{handshakeTypeServerHello, false, false},
-			handshakeCachePullRule{handshakeTypeCertificate, false, false},
-			handshakeCachePullRule{handshakeTypeServerKeyExchange, false, false},
-			handshakeCachePullRule{handshakeTypeCertificateRequest, false, false},
-			handshakeCachePullRule{handshakeTypeServerHelloDone, false, false},
-			handshakeCachePullRule{handshakeTypeCertificate, true, false},
-			handshakeCachePullRule{handshakeTypeClientKeyExchange, true, false},
+			handshakeCachePullRule{handshakeTypeClientHello, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeServerHello, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerKeyExchange, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificateRequest, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerHelloDone, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeClientKeyExchange, cfg.initialEpoch, true, false},
 		)
 
 		if err := verifyCertificateVerify(plainText, h.hashAlgorithm, h.signature, state.remoteCertificate); err != nil {
@@ -89,7 +89,7 @@ func flight4Parse(ctx context.Context, c flightConn, state *State, cache *handsh
 
 		if state.extendedMasterSecret {
 			var sessionHash []byte
-			sessionHash, err = cache.sessionHash(state.cipherSuite.hashFunc())
+			sessionHash, err = cache.sessionHash(state.cipherSuite.hashFunc(), cfg.initialEpoch)
 			if err != nil {
 				return 0, &alert{alertLevelFatal, alertInternalError}, err
 			}
@@ -116,7 +116,7 @@ func flight4Parse(ctx context.Context, c flightConn, state *State, cache *handsh
 	}
 
 	seq, msgs, ok = cache.fullPullMap(seq,
-		handshakeCachePullRule{handshakeTypeFinished, true, false},
+		handshakeCachePullRule{handshakeTypeFinished, cfg.initialEpoch + 1, true, false},
 	)
 	if !ok {
 		// No valid message received. Keep reading

@@ -9,7 +9,7 @@ import (
 
 func flight5Parse(ctx context.Context, c flightConn, state *State, cache *handshakeCache, cfg *handshakeConfig) (flightVal, *alert, error) {
 	_, msgs, ok := cache.fullPullMap(state.handshakeRecvSequence,
-		handshakeCachePullRule{handshakeTypeFinished, false, false},
+		handshakeCachePullRule{handshakeTypeFinished, cfg.initialEpoch + 1, false, false},
 	)
 	if !ok {
 		// No valid message received. Keep reading
@@ -21,16 +21,16 @@ func flight5Parse(ctx context.Context, c flightConn, state *State, cache *handsh
 		return 0, &alert{alertLevelFatal, alertInternalError}, nil
 	}
 	plainText := cache.pullAndMerge(
-		handshakeCachePullRule{handshakeTypeClientHello, true, false},
-		handshakeCachePullRule{handshakeTypeServerHello, false, false},
-		handshakeCachePullRule{handshakeTypeCertificate, false, false},
-		handshakeCachePullRule{handshakeTypeServerKeyExchange, false, false},
-		handshakeCachePullRule{handshakeTypeCertificateRequest, false, false},
-		handshakeCachePullRule{handshakeTypeServerHelloDone, false, false},
-		handshakeCachePullRule{handshakeTypeCertificate, true, false},
-		handshakeCachePullRule{handshakeTypeClientKeyExchange, true, false},
-		handshakeCachePullRule{handshakeTypeCertificateVerify, true, false},
-		handshakeCachePullRule{handshakeTypeFinished, true, false},
+		handshakeCachePullRule{handshakeTypeClientHello, cfg.initialEpoch, true, false},
+		handshakeCachePullRule{handshakeTypeServerHello, cfg.initialEpoch, false, false},
+		handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, false, false},
+		handshakeCachePullRule{handshakeTypeServerKeyExchange, cfg.initialEpoch, false, false},
+		handshakeCachePullRule{handshakeTypeCertificateRequest, cfg.initialEpoch, false, false},
+		handshakeCachePullRule{handshakeTypeServerHelloDone, cfg.initialEpoch, false, false},
+		handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, true, false},
+		handshakeCachePullRule{handshakeTypeClientKeyExchange, cfg.initialEpoch, true, false},
+		handshakeCachePullRule{handshakeTypeCertificateVerify, cfg.initialEpoch, true, false},
+		handshakeCachePullRule{handshakeTypeFinished, cfg.initialEpoch + 1, true, false},
 	)
 
 	expectedVerifyData, err := prfVerifyDataServer(state.masterSecret, plainText, state.cipherSuite.hashFunc())
@@ -93,7 +93,7 @@ func flight5Generate(c flightConn, state *State, cache *handshakeCache, cfg *han
 		})
 
 	serverKeyExchangeData := cache.pullAndMerge(
-		handshakeCachePullRule{handshakeTypeServerKeyExchange, false, false},
+		handshakeCachePullRule{handshakeTypeServerKeyExchange, cfg.initialEpoch, false, false},
 	)
 
 	serverKeyExchange := &handshakeMessageServerKeyExchange{}
@@ -145,14 +145,14 @@ func flight5Generate(c flightConn, state *State, cache *handshakeCache, cfg *han
 	// private key in the certificate.
 	if state.remoteRequestedCertificate && len(cfg.localCertificates) > 0 {
 		plainText := append(cache.pullAndMerge(
-			handshakeCachePullRule{handshakeTypeClientHello, true, false},
-			handshakeCachePullRule{handshakeTypeServerHello, false, false},
-			handshakeCachePullRule{handshakeTypeCertificate, false, false},
-			handshakeCachePullRule{handshakeTypeServerKeyExchange, false, false},
-			handshakeCachePullRule{handshakeTypeCertificateRequest, false, false},
-			handshakeCachePullRule{handshakeTypeServerHelloDone, false, false},
-			handshakeCachePullRule{handshakeTypeCertificate, true, false},
-			handshakeCachePullRule{handshakeTypeClientKeyExchange, true, false},
+			handshakeCachePullRule{handshakeTypeClientHello, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeServerHello, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerKeyExchange, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificateRequest, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerHelloDone, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeClientKeyExchange, cfg.initialEpoch, true, false},
 		), merged...)
 
 		certVerify, err := generateCertificateVerify(plainText, privateKey)
@@ -201,16 +201,16 @@ func flight5Generate(c flightConn, state *State, cache *handshakeCache, cfg *han
 
 	if len(state.localVerifyData) == 0 {
 		plainText := cache.pullAndMerge(
-			handshakeCachePullRule{handshakeTypeClientHello, true, false},
-			handshakeCachePullRule{handshakeTypeServerHello, false, false},
-			handshakeCachePullRule{handshakeTypeCertificate, false, false},
-			handshakeCachePullRule{handshakeTypeServerKeyExchange, false, false},
-			handshakeCachePullRule{handshakeTypeCertificateRequest, false, false},
-			handshakeCachePullRule{handshakeTypeServerHelloDone, false, false},
-			handshakeCachePullRule{handshakeTypeCertificate, true, false},
-			handshakeCachePullRule{handshakeTypeClientKeyExchange, true, false},
-			handshakeCachePullRule{handshakeTypeCertificateVerify, true, false},
-			handshakeCachePullRule{handshakeTypeFinished, true, false},
+			handshakeCachePullRule{handshakeTypeClientHello, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeServerHello, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerKeyExchange, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificateRequest, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerHelloDone, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeClientKeyExchange, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeCertificateVerify, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeFinished, cfg.initialEpoch + 1, true, false},
 		)
 
 		var err error
@@ -255,7 +255,7 @@ func initalizeCipherSuite(state *State, cache *handshakeCache, cfg *handshakeCon
 
 	if state.extendedMasterSecret {
 		var sessionHash []byte
-		sessionHash, err = cache.sessionHash(state.cipherSuite.hashFunc(), sendingPlainText)
+		sessionHash, err = cache.sessionHash(state.cipherSuite.hashFunc(), cfg.initialEpoch, sendingPlainText)
 		if err != nil {
 			return &alert{alertLevelFatal, alertInternalError}, err
 		}

@@ -6,7 +6,7 @@ import (
 
 func flight6Parse(ctx context.Context, c flightConn, state *State, cache *handshakeCache, cfg *handshakeConfig) (flightVal, *alert, error) {
 	_, msgs, ok := cache.fullPullMap(state.handshakeRecvSequence-1,
-		handshakeCachePullRule{handshakeTypeFinished, true, false},
+		handshakeCachePullRule{handshakeTypeFinished, cfg.initialEpoch + 1, true, false},
 	)
 	if !ok {
 		// No valid message received. Keep reading
@@ -36,16 +36,16 @@ func flight6Generate(c flightConn, state *State, cache *handshakeCache, cfg *han
 
 	if len(state.localVerifyData) == 0 {
 		plainText := cache.pullAndMerge(
-			handshakeCachePullRule{handshakeTypeClientHello, true, false},
-			handshakeCachePullRule{handshakeTypeServerHello, false, false},
-			handshakeCachePullRule{handshakeTypeCertificate, false, false},
-			handshakeCachePullRule{handshakeTypeServerKeyExchange, false, false},
-			handshakeCachePullRule{handshakeTypeCertificateRequest, false, false},
-			handshakeCachePullRule{handshakeTypeServerHelloDone, false, false},
-			handshakeCachePullRule{handshakeTypeCertificate, true, false},
-			handshakeCachePullRule{handshakeTypeClientKeyExchange, true, false},
-			handshakeCachePullRule{handshakeTypeCertificateVerify, true, false},
-			handshakeCachePullRule{handshakeTypeFinished, true, false},
+			handshakeCachePullRule{handshakeTypeClientHello, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeServerHello, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerKeyExchange, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificateRequest, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeServerHelloDone, cfg.initialEpoch, false, false},
+			handshakeCachePullRule{handshakeTypeCertificate, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeClientKeyExchange, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeCertificateVerify, cfg.initialEpoch, true, false},
+			handshakeCachePullRule{handshakeTypeFinished, cfg.initialEpoch + 1, true, false},
 		)
 
 		var err error

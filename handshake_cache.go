@@ -7,12 +7,14 @@ import (
 type handshakeCacheItem struct {
 	typ             handshakeType
 	isClient        bool
+	epoch           uint16
 	messageSequence uint16
 	data            []byte
 }
 
 type handshakeCachePullRule struct {
 	typ      handshakeType
+	epoch    uint16
 	isClient bool
 	optional bool
 }
@@ -26,7 +28,7 @@ func newHandshakeCache() *handshakeCache {
 	return &handshakeCache{}
 }
 
-func (h *handshakeCache) push(data []byte, messageSequence uint16, typ handshakeType, isClient bool) bool {
+func (h *handshakeCache) push(data []byte, epoch, messageSequence uint16, typ handshakeType, isClient bool) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -39,6 +41,7 @@ func (h *handshakeCache) push(data []byte, messageSequence uint16, typ handshake
 
 	h.cache = append(h.cache, &handshakeCacheItem{
 		data:            append([]byte{}, data...),
+		epoch:           epoch,
 		messageSequence: messageSequence,
 		typ:             typ,
 		isClient:        isClient,
@@ -56,7 +59,7 @@ func (h *handshakeCache) pull(rules ...handshakeCachePullRule) []*handshakeCache
 	out := make([]*handshakeCacheItem, len(rules))
 	for i, r := range rules {
 		for _, c := range h.cache {
-			if c.typ == r.typ && c.isClient == r.isClient {
+			if c.typ == r.typ && c.isClient == r.isClient && c.epoch == r.epoch {
 				switch {
 				case out[i] == nil:
 					out[i] = c
@@ -79,7 +82,7 @@ func (h *handshakeCache) fullPullMap(startSeq int, rules ...handshakeCachePullRu
 	for _, r := range rules {
 		var item *handshakeCacheItem
 		for _, c := range h.cache {
-			if c.typ == r.typ && c.isClient == r.isClient {
+			if c.typ == r.typ && c.isClient == r.isClient && c.epoch == r.epoch {
 				switch {
 				case item == nil:
 					item = c
@@ -130,19 +133,19 @@ func (h *handshakeCache) pullAndMerge(rules ...handshakeCachePullRule) []byte {
 
 // sessionHash returns the session hash for Extended Master Secret support
 // https://tools.ietf.org/html/draft-ietf-tls-session-hash-06#section-4
-func (h *handshakeCache) sessionHash(hf hashFunc, additional ...[]byte) ([]byte, error) {
+func (h *handshakeCache) sessionHash(hf hashFunc, epoch uint16, additional ...[]byte) ([]byte, error) {
 	merged := []byte{}
 
 	// Order defined by https://tools.ietf.org/html/rfc5246#section-7.3
 	handshakeBuffer := h.pull(
-		handshakeCachePullRule{handshakeTypeClientHello, true, false},
-		handshakeCachePullRule{handshakeTypeServerHello, false, false},
-		handshakeCachePullRule{handshakeTypeCertificate, false, false},
-		handshakeCachePullRule{handshakeTypeServerKeyExchange, false, false},
-		handshakeCachePullRule{handshakeTypeCertificateRequest, false, false},
-		handshakeCachePullRule{handshakeTypeServerHelloDone, false, false},
-		handshakeCachePullRule{handshakeTypeCertificate, true, false},
-		handshakeCachePullRule{handshakeTypeClientKeyExchange, true, false},
+		handshakeCachePullRule{handshakeTypeClientHello, epoch, true, false},
+		handshakeCachePullRule{handshakeTypeServerHello, epoch, false, false},
+		handshakeCachePullRule{handshakeTypeCertificate, epoch, false, false},
+		handshakeCachePullRule{handshakeTypeServerKeyExchange, epoch, false, false},
+		handshakeCachePullRule{handshakeTypeCertificateRequest, epoch, false, false},
+		handshakeCachePullRule{handshakeTypeServerHelloDone, epoch, false, false},
+		handshakeCachePullRule{handshakeTypeCertificate, epoch, true, false},
+		handshakeCachePullRule{handshakeTypeClientKeyExchange, epoch, true, false},
 	)
 
 	for _, p := range handshakeBuffer {
