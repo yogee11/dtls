@@ -791,7 +791,10 @@ func (c *Conn) handshake(ctx context.Context, cfg *handshakeConfig, initialFligh
 					if !e.IsFatalOrCloseNotify() {
 						if c.isHandshakeCompletedSuccessfully() {
 							// Pass the error to Read()
-							c.decrypted <- err
+							select {
+							case c.decrypted <- err:
+							case <-c.closed.Done():
+							}
 						}
 						err = nil // non-fatal alert must not stop read loop
 					}
@@ -801,7 +804,10 @@ func (c *Conn) handshake(ctx context.Context, cfg *handshakeConfig, initialFligh
 					default:
 						if c.isHandshakeCompletedSuccessfully() {
 							// Keep read loop and pass the read error to Read()
-							c.decrypted <- err
+							select {
+							case c.decrypted <- err:
+							case <-c.closed.Done():
+							}
 							err = nil
 						}
 					}
